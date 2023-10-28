@@ -1,5 +1,6 @@
 import os, sys
 import math
+import numpy
 
 
 startLayerSafetyMargin = 0
@@ -18,35 +19,18 @@ class gcodereader:
         self.failureLayer = None
        
 
-        # # print(self.filetype)
-        # self.n_segs = 0  # number of line segments
-        # self.segs = None  # list of line segments [(x0, y0, x1, y1, z)]
-        # self.n_layers = 0  # number of layers
-        # # seg_index_bars and subpath_index_bars have the same format
-        # # e.g. ith layer has segment indexes [seg_index_bars[i-1],
-        # # seg_index_bars[i])
-        # self.seg_index_bars = []
-        # self.subpath_index_bars = []
-        # self.summary = None
-        # self.lengths = None
-        # self.subpaths = None
-        # self.xyzlimits = None
-        # self.elements = None
-        # self.elements_index_bars = []
-        # # read file to populate variables
+
         self.read()
 
     def read(self):
         with open(self.filename, "r") as file:
             self.lines = list(line.strip() for line in file.readlines() if line.strip())
-        
         self.get_layer_height()
         self.get_last_layer()
 
 
     def find_gcode(self, targetStr:str, reverse:bool=False):
         if not reverse:
-            #print(lines)
             for line in self.lines:
                 if line.startswith(targetStr):
                     linestr = line.strip(" ")
@@ -54,7 +38,6 @@ class gcodereader:
                     return float(linestr[idx+1:])       
         
         else:
-            #print(tuple(lines))
             for line in reversed(self.lines):
                 if line.startswith(targetStr):
                     linestr = line.strip(" ")
@@ -72,19 +55,6 @@ class gcodereader:
         self.lastLayer = lastLayer
         print(f"Layer Count: {self.lastLayer}")
 
-    # def get_layer_height(self, lines):
-    #     for line in lines:
-    #         if line.startswith(";Layer height"):
-    #             idx = line.find(":")
-    #             self.layerHeight = float(line[idx+2:])
-    #             print(f"Layer height:{self.layerHeight}")
-    
-    # def get_last_layer(self, lines):
-    #     for line in reversed(lines):
-    #         if line.startswith(";Layer:"):
-    #             idx = line.find(":")
-    #             self.lastLayer = int(line[idx+1:])
-    #             print(f"Last Layer:{self.lastLayer}")
 
     def get_failure_layer(self, zHeight:float or int):
         failureLayer = math.ceil(zHeight / self.layerHeight) 
@@ -106,7 +76,6 @@ class gcodereader:
                     startIdx = count - 1
                     break
                     
-        # print(self.lines[startIdx:startIdx+5])
         endIdx = self.lines.index(f";LAYER:{self.failureLayer + startLayerSafetyMargin}")
         print(self.lines[endIdx:endIdx+5])
 
@@ -115,16 +84,13 @@ class gcodereader:
             count -= 1
             if "Z" in self.lines[count]:
                 endIdx = count
-                # print(count)
                 break
         
         restartLine = self.lines[endIdx].split(" ")
-        # print(restartLine)
         newLine = []
         for command in restartLine:
             if not command.startswith("X") and not command.startswith("Y"):
                 newLine.append(command)
-        # print(newLine)
         self.lines[endIdx] = " ".join(newLine)
         print(self.lines[endIdx])
 
@@ -137,7 +103,7 @@ class gcodereader:
         
 
 def main():
-    gcodeobj = gcodereader(filepath = r"C:\Users\yonx3\Documents\Crossbow\GCodes\CE3_3DBenchy.gcode")
+    gcodeobj = gcodereader(filename = r"C:\Users\yonx3\Documents\Crossbow\GCodes\CE3_3DBenchy.gcode")
 
     while True:
         try:
