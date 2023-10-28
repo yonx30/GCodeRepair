@@ -1,9 +1,11 @@
 import os, sys
 import math
-import numpy
+import numpy as np
+import pandas as pd
 
 
 startLayerSafetyMargin = 0
+lastInitGcode = "M420 S1"
 
 class gcodereader:
 
@@ -24,34 +26,46 @@ class gcodereader:
 
     def read(self):
         with open(self.filename, "r") as file:
-            self.lines = list(line.strip() for line in file.readlines() if line.strip())
+            lines = (line.strip() for line in file.readlines() if line.strip())
+            self.lines = np.array(tuple(lines))
         self.get_layer_height()
         self.get_last_layer()
 
 
-    def find_gcode(self, targetStr:str, reverse:bool=False):
-        if not reverse:
-            for line in self.lines:
-                if line.startswith(targetStr):
-                    linestr = line.strip(" ")
-                    idx = linestr.find(":")
-                    return float(linestr[idx+1:])       
+    def get_gcode_val(self, targetStr:str):
+        df = pd.Series(self.lines).str.contains(targetStr)
+        idx = np.where(np.array(df) != 0)[0][0]
+        line = self.lines[idx]
+        linestr = line.strip(" ")
+        idx = linestr.find(":")
+        return float(linestr[idx+1:])  
+     
+    def find_gcode_idx(self, targetStr:str, mode:str="find", mod=None):
         
+        if not mod:
+            array = self.lines
         else:
-            for line in reversed(self.lines):
-                if line.startswith(targetStr):
-                    linestr = line.strip(" ")
-                    idx = linestr.find(":")
-                    return float(linestr[idx+1:]) 
+            array = self.lines[:mod][::-1]
+
+        if mode.lower() == "find":
+            boolArray = np.char.find(array, targetStr, start=0, end=None)
+            idx = np.where(np.array(boolArray) != -1)[0][0]    
+
+        elif mode.lower() == "contains":
+            df = pd.Series(array).str.contains(targetStr)
+            idx = np.where(np.array(df) != 0)[0][0]
+        return idx
+        
+
                                  
         
     def get_layer_height(self):
-        layerHeight = self.find_gcode(targetStr=";Layer height")
+        layerHeight = self.get_gcode_val(targetStr=";Layer height")
         self.layerHeight = layerHeight
         print(f"Layer Height: {self.layerHeight}")
 
     def get_last_layer(self):
-        lastLayer = self.find_gcode(targetStr=";LAYER_COUNT:") - 1
+        lastLayer = self.get_gcode_val(targetStr=";LAYER_COUNT:") - 1
         self.lastLayer = lastLayer
         print(f"Layer Count: {self.lastLayer}")
 
@@ -60,41 +74,25 @@ class gcodereader:
         failureLayer = math.ceil(zHeight / self.layerHeight) 
         self.failureLayer = failureLayer
         print(f"Failure Layer: {self.failureLayer}")
-        pass
 
     def modify_gcode(self):
-        count = 0
-        homeFlag = True
-        for line in self.lines:
-            if homeFlag:
-                count += 1
-                if line.startswith("G28"):
-                    homeFlag = False
-            else:
-                count += 1
-                if line.startswith("G"):
-                    startIdx = count - 1
-                    break
-                    
-        endIdx = self.lines.index(f";LAYER:{self.failureLayer + startLayerSafetyMargin}")
-        print(self.lines[endIdx:endIdx+5])
+        startIdx = self.find_gcode_idx(lastInitGcode, "contains")
 
-        count = endIdx
-        while True:
-            count -= 1
-            if "Z" in self.lines[count]:
-                endIdx = count
-                break
-        
-        restartLine = self.lines[endIdx].split(" ")
+        endIdx = self.find_gcode_idx(f";LAYER:{self.failureLayer + startLayerSafetyMargin}", "find")  
+
+        restartIdx = self.find_gcode_idx("Z", "contains", mod=endIdx)
+        restartIdx = endIdx - restartIdx - 1
+
+        restartLine = self.lines[restartIdx].split(" ")
         newLine = []
         for command in restartLine:
             if not command.startswith("X") and not command.startswith("Y"):
                 newLine.append(command)
-        self.lines[endIdx] = " ".join(newLine)
-        print(self.lines[endIdx])
 
-        modifiedGCode = self.lines[:startIdx] + [self.lines[endIdx]] + ["M0 Please replace print bed then click to continue ; Stop for user input"] + self.lines[endIdx+1:]
+        self.lines[restartIdx] = " ".join(newLine)
+
+        modifiedGCode = np.concatenate((self.lines[:startIdx], [self.lines[restartIdx]], ["M0 Please replace print bed then click to continue ; Stop for user input"], self.lines[restartIdx+1:]))
+
         modifiedFile = open(r"C:\Users\yonx3\Documents\Crossbow\GCodes\Modified.gcode", "w")
         for line in modifiedGCode:
             modifiedFile.write(f"{line}\n")
@@ -107,7 +105,7 @@ def main():
 
     while True:
         try:
-            failurePartHeight = float(input("Enter part height: "))
+            failurePartHeight = 22.5#float(input("Enter part height: "))
         except ValueError or TypeError:
             continue
         else:
