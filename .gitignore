@@ -5,5 +5,7 @@
 *COLMAP-3.8-windows-cuda/
 *vcpkg/
 *.zip
-
+*dist/
+*build/
+*.spec
 
