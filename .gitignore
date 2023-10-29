@@ -8,4 +8,9 @@
 *dist/
 *build/
 *.spec
+*Archive/
+*VisualSFM_windows_cuda_64bit/
+*Webcam Images
+
+
 
