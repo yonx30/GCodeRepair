@@ -1,16 +1,33 @@
-*.vscode/
-*.venv/
-*colmap/
-*Colmap Recon/
-*COLMAP-3.8-windows-cuda/
-*vcpkg/
-*.zip
-*dist/
-*build/
+*.db
+
+*.py[cod]
+
 *.spec
+
+*.venv/
+
+*.vscode/
+
+*.zip
+
 *Archive/
+
+*COLMAP-3.8-windows-cuda/
+
+*Colmap Recon/
+
 *VisualSFM_windows_cuda_64bit/
+
 *Webcam Images
 
+*build/
 
+*colmap/
 
+*dist/
+
+*vcpkg/
+
+.web
+
+__pycache__/

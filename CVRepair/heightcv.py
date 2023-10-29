@@ -45,12 +45,12 @@ class cvImage:
         self.lgHuMoments = None
         self.cvImage = None
         self.contours = None
-        self.find_countours()
-        self.draw_contours()
+        if self.find_countours():
+            self.draw_contours()
 
     def find_countours(self):
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY) 
-        gray = cv2.GaussianBlur(gray, (11, 11), 0) # Blurring removes noise, (7,7) is standard deviation in x/y directions for blur   
+        gray = cv2.GaussianBlur(gray, (9, 9), 0) # Blurring removes noise, (7,7) is standard deviation in x/y directions for blur   
 
         # perform edge detection, then perform a dilation + erosion to
         # close gaps in between object edges
@@ -62,19 +62,28 @@ class cvImage:
         # find contours in the edge map
         self.contours = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # Draws contours - 1st arg is image, 2nd is contour retrieval mode and 3rd is contour approx method
         self.contours = imutils.grab_contours(self.contours)
-        (self.contours, _) = contours.sort_contours(self.contours)
-        self.cvImage = self.image.copy()
+        try:
+            (self.contours, _) = contours.sort_contours(self.contours)
+        except:
+            return False
+        else:
+            self.cvImage = self.image.copy()
+            return True
 
     def draw_contours(self):
         # loop over the contours individually
+        largestContour = self.contours[0]
         for contour in self.contours:
             # Compute the contour area, reject those below a certain size
             if cv2.contourArea(contour) < 2500:
                 continue
 
+            if cv2.contourArea(contour) > cv2.contourArea(largestContour):
+                largestContour = contour
+
             # Fits straight line contours to the given contour approximately, with the straight line lengths being epsilon and the Bool (True)
             # referring to whether the approxPolyDP should be closed
-            epsilon = 0.001*cv2.arcLength(contour,True)
+            epsilon = 0.0001*cv2.arcLength(contour,True)
             contourApprox = cv2.approxPolyDP(contour,epsilon,True)
 
             # Construct a numpy array with the contour coordinates
@@ -83,13 +92,16 @@ class cvImage:
             # args = (image, contours to be passed, contours to draw [-1 means all], RGB colour of contours, thickness)
             cv2.drawContours(self.cvImage, [contourApprox], -1, (255, 0, 0), 2) 
             # huMoments = cv2.HuMoments(cv2.moments(image))
-            huMoments = cv2.HuMoments(cv2.moments(contourApprox))
+
+        # Only get HuMoment of largest centroid
+        huMoments = cv2.HuMoments(cv2.moments(largestContour))
+        try:
+            self.lgHuMoments = np.array([-lg(abs(huMoment[0])) for huMoment in huMoments], dtype=float)
+        except:
+            pass
+        
+        else:
             try:
-                self.lgHuMoments = np.array([-lg(abs(huMoment[0])) for huMoment in huMoments], dtype=float)
-            except:
-                pass
-            
-            else:
                 # Gets the centroid, then write the lgHuMoment values at the centroid
                 moment = cv2.moments(contour)
                 cX = int(moment["m10"] / moment["m00"])
@@ -97,8 +109,14 @@ class cvImage:
                 cv2.putText(self.cvImage, "{:.1f}".format(np.average(self.lgHuMoments)),
                 (int(cX), int(cY)), cv2.FONT_HERSHEY_SIMPLEX,
                 0.65, (0, 0, 0), 2)
+            except:
+                pass
     
-    def draw_bounding_box(self, width:int or float):
+    def draw_bounding_box(self, width:int or float, visibility:bool=True):
+        if visibility:
+            colourPalette = (0,255,0)
+        else:
+            colourPalette = (0,0,255)
         pixelsPerMetric = None
         for contour in self.contours:
             # Compute the contour area, reject those below a certain size
@@ -114,7 +132,7 @@ class cvImage:
             # order, then draw the outline of the rotated bounding
             # box
             box = perspective.order_points(box)
-            cv2.drawContours(self.cvImage, [box.astype("int")], -1, (0, 255, 0), 3)
+            cv2.drawContours(self.cvImage, [box.astype("int")], -1, colourPalette, 3)
 
             
             # loop over the original points and draw them
@@ -132,10 +150,13 @@ class cvImage:
             (tlblX, tlblY) = midpoint(tl, bl) #left height
             (trbrX, trbrY) = midpoint(tr, br) #right height
             # draw the midpoints on the image
-            cv2.circle(self.cvImage, (int(tltrX), int(tltrY)), 5, (255, 0, 0), -1)
+            
             cv2.circle(self.cvImage, (int(blbrX), int(blbrY)), 5, (255, 0, 0), -1)
             cv2.circle(self.cvImage, (int(tlblX), int(tlblY)), 5, (255, 0, 0), -1)
-            cv2.circle(self.cvImage, (int(trbrX), int(trbrY)), 5, (255, 0, 0), -1)
+            
+            if visibility:
+                cv2.circle(self.cvImage, (int(trbrX), int(trbrY)), 5, (255, 0, 0), -1)
+                cv2.circle(self.cvImage, (int(tltrX), int(tltrY)), 5, (255, 0, 0), -1) 
             # draw lines between the midpoints
             cv2.line(self.cvImage, (int(tltrX), int(tltrY)), (int(blbrX), int(blbrY)),
                 (255, 0, 255), 2)
@@ -148,19 +169,22 @@ class cvImage:
             # if the pixels per metric has not been initialized, then
             # compute it as the ratio of pixels to supplied metric
             # (in this case, inches)
-            if pixelsPerMetric is None:
-                pixelsPerMetric = dB / width
+
+            pixelsPerMetric = dB / width
 
             # compute the size of the object
-            dimA = dA / pixelsPerMetric
-            dimB = dB / pixelsPerMetric
+            dimA = dA / pixelsPerMetric # Normalised object height
+            dimB = dB / pixelsPerMetric # Normalised object width
             # draw the object sizes on the image
             cv2.putText(self.cvImage, "X = {:.1f}mm".format(dimB),
                 (int(tltrX - 15), int(tltrY - 10)), cv2.FONT_HERSHEY_SIMPLEX,
                 0.65, (0, 0, 0), 3)
-            cv2.putText(self.cvImage, "Z = {:.1f}mm".format(dimA),
-                (int(trbrX + 10), int(trbrY)), cv2.FONT_HERSHEY_SIMPLEX,
-                0.65, (0, 0, 0), 3)
+            if visibility:
+                cv2.putText(self.cvImage, "Z = {:.1f}mm".format(dimA),
+                    (int(trbrX + 10), int(trbrY)), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65, (0, 0, 0), 3)
+                
+            return dimA
 
 
     def draw_image(self, wait:int or float=0):
@@ -187,9 +211,9 @@ def compare_hu_moments(cvImage1:cvImage, cvImage2:cvImage):
 
 if __name__ == "__main__":
 
-    args = {"image":r"C:\Users\yonx3\Documents\NUS Y2S1\NOC\Misc\Calhacks\Webcam Images\model6.jpg"}
-    image6 = cvImage(args)
-    image6.draw_image()
+    args = {"image":r"C:\Users\yonx3\Documents\NUS Y2S1\NOC\Misc\Calhacks\Webcam Images\model7.jpg"}
+    image7 = cvImage(args)
+    image7.draw_image()
 
     args = {"image":r"C:\Users\yonx3\Documents\NUS Y2S1\NOC\Misc\Calhacks\Webcam Images\model.jpg"}
     image1 = cvImage(args)

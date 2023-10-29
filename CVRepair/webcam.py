@@ -34,7 +34,7 @@ fileDir = os. getcwd()
 
 class screenRecorder:
     def __init__(self) -> None:
-        self.bounding_box = {'top': 100, 'left': 300, 'width': 900, 'height': 900}
+        self.bounding_box = {'top': 300, 'left': 500, 'width': 600, 'height': 600}
         self.sct = mss()
 
     def screenshot(self):
